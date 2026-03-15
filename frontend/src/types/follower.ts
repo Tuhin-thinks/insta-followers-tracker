@@ -42,9 +42,12 @@ export interface DiffResult {
 export interface InstagramUserRecord {
   instagram_user_id: string
   name: string
+  username?: string | null
   csrf_token: string
   session_id: string
   user_id: string
+  csrf_token_added_at?: string | null
+  session_id_added_at?: string | null
   created_at: string
 }
 

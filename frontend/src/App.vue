@@ -8,6 +8,7 @@ import type { InstagramUserRecord } from "./types/follower";
 
 const queryClient = useQueryClient();
 const currentView = ref<"dashboard" | "history" | "admin" | "details">("dashboard");
+const staleThresholdMs = 24 * 60 * 60 * 1000;
 
 const loginForm = ref({ name: "", password: "" });
 const registerForm = ref({ name: "", password: "" });
@@ -19,6 +20,7 @@ const instagramUserForm = ref({
 });
 
 const selectedInstagramUser = ref<InstagramUserRecord | null>(null);
+const activeAccountMessage = ref("");
 
 const { data: meData, isLoading: meLoading } = useQuery({
     queryKey: ["me"],
@@ -85,6 +87,8 @@ const { mutate: switchInstagramUser, isPending: switchPending } = useMutation({
         api.setActiveInstagramUserForApi(
             payload.active_instagram_user.instagram_user_id,
         );
+        selectedInstagramUser.value = payload.active_instagram_user;
+        activeAccountMessage.value = payload.message;
         queryClient.invalidateQueries();
     },
 });
@@ -131,6 +135,29 @@ watch(
     },
     { immediate: true },
 );
+
+watch(currentView, () => {
+    activeAccountMessage.value = "";
+});
+
+function parseIsoTime(value?: string | null): number | null {
+    if (!value) return null;
+    const millis = Date.parse(value);
+    return Number.isNaN(millis) ? null : millis;
+}
+
+function isCredentialStale(value?: string | null): boolean {
+    const timestamp = parseIsoTime(value);
+    if (!timestamp) return false;
+    return Date.now() - timestamp > staleThresholdMs;
+}
+
+function hasStaleCredentials(user: InstagramUserRecord): boolean {
+    return (
+        isCredentialStale(user.csrf_token_added_at ?? user.created_at) ||
+        isCredentialStale(user.session_id_added_at ?? user.created_at)
+    );
+}
 
 const isLoggedIn = computed(() => !!meData.value?.app_user_id);
 
@@ -214,6 +241,9 @@ async function openDetails(instagramUserId: string) {
                         <p class="text-xs text-gray-500">
                             App user: {{ meData?.name }}
                         </p>
+                        <p v-if="activeInstagramUser" class="text-xs text-gray-500 mt-0.5">
+                            Active account: <span class="font-semibold text-gray-700">{{ activeInstagramUser.name }}</span>
+                        </p>
                     </div>
 
                     <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
@@ -291,7 +321,21 @@ async function openDetails(instagramUserId: string) {
                                 class="w-full text-left border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50"
                                 @click="openDetails(u.instagram_user_id)"
                             >
-                                <p class="text-sm font-semibold">{{ u.name }}</p>
+                                <div class="flex items-center gap-2">
+                                    <p class="text-sm font-semibold">{{ u.name }}</p>
+                                    <span
+                                        v-if="activeInstagramUser?.instagram_user_id === u.instagram_user_id"
+                                        class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700"
+                                    >
+                                        Active
+                                    </span>
+                                    <span
+                                        v-if="hasStaleCredentials(u)"
+                                        class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-100 text-amber-800"
+                                    >
+                                        Credentials old
+                                    </span>
+                                </div>
                                 <p class="text-xs text-gray-500">
                                     USER_ID: {{ u.user_id }}
                                 </p>
@@ -306,7 +350,7 @@ async function openDetails(instagramUserId: string) {
                         <form class="space-y-3" @submit.prevent="addInstagramUser()">
                             <input
                                 v-model="instagramUserForm.name"
-                                placeholder="Display name"
+                                placeholder="Display name (optional)"
                                 class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                             />
                             <input
@@ -351,10 +395,32 @@ async function openDetails(instagramUserId: string) {
                     <h2 class="text-xl font-bold mb-4">
                         {{ selectedInstagramUser.name }}
                     </h2>
+                    <p v-if="activeAccountMessage" class="mb-4 text-sm rounded-lg px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        {{ activeAccountMessage }}
+                    </p>
                     <div class="grid gap-2 text-sm">
+                        <p>
+                            <span class="font-semibold">Status:</span>
+                            <span
+                                v-if="activeInstagramUser?.instagram_user_id === selectedInstagramUser.instagram_user_id"
+                                class="ml-2 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700"
+                            >
+                                Active account
+                            </span>
+                            <span
+                                v-else
+                                class="ml-2 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 text-gray-700"
+                            >
+                                Inactive
+                            </span>
+                        </p>
                         <p>
                             <span class="font-semibold">Instagram User ID:</span>
                             {{ selectedInstagramUser.instagram_user_id }}
+                        </p>
+                        <p v-if="selectedInstagramUser.username">
+                            <span class="font-semibold">Username:</span>
+                            {{ selectedInstagramUser.username }}
                         </p>
                         <p>
                             <span class="font-semibold">USER_ID:</span>
@@ -371,6 +437,17 @@ async function openDetails(instagramUserId: string) {
                         <p>
                             <span class="font-semibold">Created:</span>
                             {{ new Date(selectedInstagramUser.created_at).toLocaleString() }}
+                        </p>
+                        <p>
+                            <span class="font-semibold">CSRF token added:</span>
+                            {{ selectedInstagramUser.csrf_token_added_at ? new Date(selectedInstagramUser.csrf_token_added_at).toLocaleString() : "Unknown" }}
+                        </p>
+                        <p>
+                            <span class="font-semibold">Session ID added:</span>
+                            {{ selectedInstagramUser.session_id_added_at ? new Date(selectedInstagramUser.session_id_added_at).toLocaleString() : "Unknown" }}
+                        </p>
+                        <p v-if="hasStaleCredentials(selectedInstagramUser)" class="text-amber-700">
+                            Credential warning: one or more credentials are older than 1 day.
                         </p>
                     </div>
 

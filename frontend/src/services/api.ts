@@ -52,7 +52,7 @@ export const getInstagramUser = (instagramUserId: string) =>
   http.get<InstagramUserRecord>(`/auth/instagram-users/${instagramUserId}`).then((r) => r.data)
 
 export const selectInstagramUser = (instagramUserId: string) =>
-  http.post<{ active_instagram_user: InstagramUserRecord; me: MeResponse }>(`/auth/instagram-users/${instagramUserId}/select`).then((r) => r.data)
+  http.post<{ active_instagram_user: InstagramUserRecord; message: string; me: MeResponse }>(`/auth/instagram-users/${instagramUserId}/select`).then((r) => r.data)
 
 export const deleteInstagramUser = (instagramUserId: string) =>
   http.delete<{ ok: boolean; me: MeResponse }>(`/auth/instagram-users/${instagramUserId}`).then((r) => r.data)
