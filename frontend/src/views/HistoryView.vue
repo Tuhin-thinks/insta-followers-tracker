@@ -5,8 +5,12 @@ import FollowerCard from '../components/FollowerCard.vue'
 import * as api from '../services/api'
 import type { DiffResult } from '../types/follower'
 
+const props = defineProps<{
+  profileId: string
+}>()
+
 const { data: history, isLoading } = useQuery({
-  queryKey: ['history'],
+  queryKey: ['history', props.profileId],
   queryFn: api.getHistory,
   staleTime: Infinity,
   refetchOnWindowFocus: false,
@@ -127,6 +131,7 @@ function formatDate(iso: string) {
                   v-for="f in selectedDiff.new_followers"
                   :key="f.pk_id"
                   :follower="f"
+                  :profile-id="props.profileId"
                   compact
                 />
               </div>
@@ -140,6 +145,7 @@ function formatDate(iso: string) {
                   v-for="f in selectedDiff.unfollowers"
                   :key="f.pk_id"
                   :follower="f"
+                  :profile-id="props.profileId"
                   compact
                 />
               </div>

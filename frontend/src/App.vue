@@ -1,45 +1,401 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref, watch } from "vue";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import Dashboard from "./views/Dashboard.vue";
 import HistoryView from "./views/HistoryView.vue";
+import * as api from "./services/api";
+import type { InstagramUserRecord } from "./types/follower";
 
-const currentView = ref<"dashboard" | "history">("dashboard");
+const queryClient = useQueryClient();
+const currentView = ref<"dashboard" | "history" | "admin" | "details">("dashboard");
+
+const loginForm = ref({ name: "", password: "" });
+const registerForm = ref({ name: "", password: "" });
+const instagramUserForm = ref({
+    name: "",
+    csrf_token: "",
+    session_id: "",
+    user_id: "",
+});
+
+const selectedInstagramUser = ref<InstagramUserRecord | null>(null);
+
+const { data: meData, isLoading: meLoading } = useQuery({
+    queryKey: ["me"],
+    queryFn: api.me,
+    staleTime: 30_000,
+});
+
+const { mutate: doRegister, isPending: registerPending, error: registerError } = useMutation({
+    mutationFn: () => api.registerAppUser(registerForm.value),
+});
+
+const { mutate: doLogin, isPending: loginPending, error: loginError } = useMutation({
+    mutationFn: () => api.loginAppUser(loginForm.value),
+    onSuccess: (payload) => {
+        queryClient.setQueryData(["me"], payload);
+        const active = payload.active_instagram_user;
+        if (active) {
+            api.setActiveInstagramUserForApi(active.instagram_user_id);
+            currentView.value = "dashboard";
+            queryClient.invalidateQueries();
+        } else {
+            currentView.value = "admin";
+        }
+    },
+});
+
+const { mutate: doLogout, isPending: logoutPending } = useMutation({
+    mutationFn: api.logout,
+    onSuccess: async () => {
+        api.setActiveInstagramUserForApi("");
+        selectedInstagramUser.value = null;
+        queryClient.setQueryData(["me"], null);
+        await queryClient.invalidateQueries();
+    },
+});
+
+const {
+    mutate: addInstagramUser,
+    isPending: addInstagramUserPending,
+    error: addInstagramUserError,
+} = useMutation({
+    mutationFn: () => api.createInstagramUser(instagramUserForm.value),
+    onSuccess: (payload) => {
+        queryClient.setQueryData(["me"], payload.me);
+        instagramUserForm.value = {
+            name: "",
+            csrf_token: "",
+            session_id: "",
+            user_id: "",
+        };
+        const active = payload.me.active_instagram_user;
+        if (active) {
+            api.setActiveInstagramUserForApi(active.instagram_user_id);
+        }
+        currentView.value = "admin";
+        queryClient.invalidateQueries();
+    },
+});
+
+const { mutate: switchInstagramUser, isPending: switchPending } = useMutation({
+    mutationFn: (instagramUserId: string) => api.selectInstagramUser(instagramUserId),
+    onSuccess: (payload) => {
+        queryClient.setQueryData(["me"], payload.me);
+        api.setActiveInstagramUserForApi(
+            payload.active_instagram_user.instagram_user_id,
+        );
+        queryClient.invalidateQueries();
+    },
+});
+
+const { mutate: removeInstagramUser, isPending: removePending } = useMutation({
+    mutationFn: (instagramUserId: string) => api.deleteInstagramUser(instagramUserId),
+    onSuccess: (payload) => {
+        queryClient.setQueryData(["me"], payload.me);
+        selectedInstagramUser.value = null;
+        const active = payload.me.active_instagram_user;
+        api.setActiveInstagramUserForApi(active ? active.instagram_user_id : "");
+        if (!active) {
+            currentView.value = "admin";
+        }
+        queryClient.invalidateQueries();
+    },
+});
+
+const { mutate: removeAllInstagramUsers, isPending: removeAllPending } = useMutation({
+    mutationFn: api.deleteAllInstagramUsers,
+    onSuccess: (payload) => {
+        queryClient.setQueryData(["me"], payload.me);
+        selectedInstagramUser.value = null;
+        api.setActiveInstagramUserForApi("");
+        currentView.value = "admin";
+        queryClient.invalidateQueries();
+    },
+});
+
+const activeInstagramUser = computed<InstagramUserRecord | null>(
+    () => meData.value?.active_instagram_user ?? null,
+);
+
+const instagramUsers = computed<InstagramUserRecord[]>(
+    () => meData.value?.instagram_users ?? [],
+);
+
+watch(
+    () => activeInstagramUser.value?.instagram_user_id,
+    (instagramUserId) => {
+        if (instagramUserId) {
+            api.setActiveInstagramUserForApi(instagramUserId);
+        }
+    },
+    { immediate: true },
+);
+
+const isLoggedIn = computed(() => !!meData.value?.app_user_id);
+
+async function openDetails(instagramUserId: string) {
+    selectedInstagramUser.value = await api.getInstagramUser(instagramUserId);
+    currentView.value = "details";
+}
 </script>
 
 <template>
-    <div class="min-h-screen bg-gray-50 text-gray-900">
-        <!-- Top navigation -->
-        <nav
-            class="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-3 shadow-sm"
-        >
-            <div class="max-w-3xl mx-auto flex items-center justify-between">
-                <span class="text-lg font-bold tracking-tight"
-                    >📊 Follower Tracker</span
-                >
-                <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
+    <div class="min-h-screen bg-gray-50 text-gray-900" v-if="!meLoading">
+        <main v-if="!isLoggedIn" class="max-w-xl mx-auto px-6 py-16 space-y-6">
+            <div class="bg-white border border-gray-200 shadow-sm rounded-2xl p-6">
+                <h1 class="text-2xl font-bold text-gray-900 mb-1">App Login</h1>
+                <p class="text-sm text-gray-500 mb-6">
+                    Login uses app user name and password only.
+                </p>
+
+                <form class="space-y-4" @submit.prevent="doLogin()">
+                    <input
+                        v-model="loginForm.name"
+                        placeholder="Name"
+                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                    <input
+                        v-model="loginForm.password"
+                        type="password"
+                        placeholder="Password"
+                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
                     <button
-                        v-for="(label, view) in {
-                            dashboard: 'Dashboard',
-                            history: 'History',
-                        }"
-                        :key="view"
-                        :class="
-                            currentView === view
-                                ? 'bg-white shadow text-gray-900'
-                                : 'text-gray-500 hover:text-gray-700'
-                        "
-                        class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
-                        @click="currentView = view as 'dashboard' | 'history'"
+                        :disabled="loginPending"
+                        class="w-full bg-indigo-600 text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
                     >
-                        {{ label }}
+                        {{ loginPending ? "Logging in…" : "Login" }}
+                    </button>
+                </form>
+                <p v-if="loginError" class="text-sm text-rose-600 mt-3">
+                    Invalid app credentials.
+                </p>
+            </div>
+
+            <div class="bg-white border border-gray-200 shadow-sm rounded-2xl p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-3">
+                    Create App User
+                </h2>
+                <form class="space-y-3" @submit.prevent="doRegister()">
+                    <input
+                        v-model="registerForm.name"
+                        placeholder="Name"
+                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                    <input
+                        v-model="registerForm.password"
+                        type="password"
+                        placeholder="Password"
+                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                    <button
+                        :disabled="registerPending"
+                        class="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-black disabled:opacity-50"
+                    >
+                        {{ registerPending ? "Creating…" : "Create User" }}
+                    </button>
+                </form>
+                <p v-if="registerError" class="text-sm text-rose-600 mt-3">
+                    Could not create app user.
+                </p>
+            </div>
+        </main>
+
+        <template v-else>
+            <nav
+                class="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-3 shadow-sm"
+            >
+                <div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
+                    <div>
+                        <p class="text-lg font-bold tracking-tight">
+                            📊 Follower Tracker
+                        </p>
+                        <p class="text-xs text-gray-500">
+                            App user: {{ meData?.name }}
+                        </p>
+                    </div>
+
+                    <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                        <button
+                            v-for="(label, view) in {
+                                dashboard: 'Dashboard',
+                                history: 'History',
+                                admin: 'Admin',
+                            }"
+                            :key="view"
+                            :class="
+                                currentView === view
+                                    ? 'bg-white shadow text-gray-900'
+                                    : 'text-gray-500 hover:text-gray-700'
+                            "
+                            class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
+                            @click="
+                                currentView =
+                                    view as
+                                        | 'dashboard'
+                                        | 'history'
+                                        | 'admin'
+                            "
+                        >
+                            {{ label }}
+                        </button>
+                    </div>
+
+                    <button
+                        :disabled="logoutPending"
+                        @click="doLogout()"
+                        class="text-xs px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100"
+                    >
+                        Logout
                     </button>
                 </div>
-            </div>
-        </nav>
+            </nav>
 
-        <main class="max-w-3xl mx-auto px-6 py-8">
-            <Dashboard v-if="currentView === 'dashboard'" />
-            <HistoryView v-else />
-        </main>
+            <main class="max-w-6xl mx-auto px-6 py-8">
+                <Dashboard
+                    v-if="currentView === 'dashboard' && activeInstagramUser"
+                    :profile-id="activeInstagramUser.instagram_user_id"
+                />
+                <HistoryView
+                    v-else-if="currentView === 'history' && activeInstagramUser"
+                    :profile-id="activeInstagramUser.instagram_user_id"
+                />
+
+                <!-- Dedicated admin page -->
+                <div
+                    v-else-if="currentView === 'admin'"
+                    class="grid lg:grid-cols-2 gap-6"
+                >
+                    <section
+                        class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6"
+                    >
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-lg font-semibold">Instagram Users</h2>
+                            <button
+                                :disabled="removeAllPending"
+                                @click="removeAllInstagramUsers()"
+                                class="text-xs px-3 py-1.5 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                            >
+                                Delete All
+                            </button>
+                        </div>
+
+                        <div v-if="!instagramUsers.length" class="text-sm text-gray-500">
+                            No instagram users yet. Add one using the form.
+                        </div>
+                        <div v-else class="space-y-2">
+                            <button
+                                v-for="u in instagramUsers"
+                                :key="u.instagram_user_id"
+                                class="w-full text-left border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50"
+                                @click="openDetails(u.instagram_user_id)"
+                            >
+                                <p class="text-sm font-semibold">{{ u.name }}</p>
+                                <p class="text-xs text-gray-500">
+                                    USER_ID: {{ u.user_id }}
+                                </p>
+                            </button>
+                        </div>
+                    </section>
+
+                    <section
+                        class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6"
+                    >
+                        <h2 class="text-lg font-semibold mb-4">Add Instagram User</h2>
+                        <form class="space-y-3" @submit.prevent="addInstagramUser()">
+                            <input
+                                v-model="instagramUserForm.name"
+                                placeholder="Display name"
+                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                            />
+                            <input
+                                v-model="instagramUserForm.csrf_token"
+                                placeholder="CSRF_TOKEN (required)"
+                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                            />
+                            <input
+                                v-model="instagramUserForm.session_id"
+                                placeholder="SESSION_ID (required)"
+                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                            />
+                            <input
+                                v-model="instagramUserForm.user_id"
+                                placeholder="USER_ID (required)"
+                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                            />
+                            <button
+                                :disabled="addInstagramUserPending"
+                                class="w-full bg-indigo-600 text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                {{ addInstagramUserPending ? "Adding…" : "Add Instagram User" }}
+                            </button>
+                        </form>
+                        <p v-if="addInstagramUserError" class="text-sm text-rose-600 mt-3">
+                            Could not add instagram user. All credential fields are mandatory.
+                        </p>
+                    </section>
+                </div>
+
+                <!-- Instagram user details page -->
+                <div
+                    v-else-if="currentView === 'details' && selectedInstagramUser"
+                    class="max-w-2xl bg-white border border-gray-200 rounded-2xl shadow-sm p-6"
+                >
+                    <button
+                        @click="currentView = 'admin'"
+                        class="text-xs mb-4 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
+                    >
+                        ← Back to Admin
+                    </button>
+                    <h2 class="text-xl font-bold mb-4">
+                        {{ selectedInstagramUser.name }}
+                    </h2>
+                    <div class="grid gap-2 text-sm">
+                        <p>
+                            <span class="font-semibold">Instagram User ID:</span>
+                            {{ selectedInstagramUser.instagram_user_id }}
+                        </p>
+                        <p>
+                            <span class="font-semibold">USER_ID:</span>
+                            {{ selectedInstagramUser.user_id }}
+                        </p>
+                        <p>
+                            <span class="font-semibold">CSRF_TOKEN:</span>
+                            {{ selectedInstagramUser.csrf_token }}
+                        </p>
+                        <p>
+                            <span class="font-semibold">SESSION_ID:</span>
+                            {{ selectedInstagramUser.session_id }}
+                        </p>
+                        <p>
+                            <span class="font-semibold">Created:</span>
+                            {{ new Date(selectedInstagramUser.created_at).toLocaleString() }}
+                        </p>
+                    </div>
+
+                    <div class="mt-6 flex gap-2">
+                        <button
+                            :disabled="switchPending"
+                            @click="switchInstagramUser(selectedInstagramUser.instagram_user_id)"
+                            class="px-4 py-2 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                            Set Active
+                        </button>
+                        <button
+                            :disabled="removePending"
+                            @click="removeInstagramUser(selectedInstagramUser.instagram_user_id)"
+                            class="px-4 py-2 text-sm rounded bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                </div>
+
+                <div v-else class="text-sm text-gray-500">
+                    Select or create an instagram user from the Admin page first.
+                </div>
+            </main>
+        </template>
     </div>
 </template>

@@ -6,12 +6,16 @@ import SkeletonCard from "../components/SkeletonCard.vue";
 import * as api from "../services/api";
 import type { ScanStatus, FollowerRecord } from "../types/follower";
 
+const props = defineProps<{
+    profileId: string;
+}>();
+
 const queryClient = useQueryClient();
 
 // ── Scan status ────────────────────────────────────────────────────────────
 // Polls every 2 s while a scan is running, otherwise stays quiet.
 const { data: scanStatus } = useQuery({
-    queryKey: ["scan", "status"],
+    queryKey: ["scan", "status", props.profileId],
     queryFn: api.getScanStatus,
     refetchInterval: (query) => {
         const s = (query.state.data as ScanStatus | undefined)?.status;
@@ -22,7 +26,7 @@ const { data: scanStatus } = useQuery({
 
 // ── Summary (header stats) ─────────────────────────────────────────────────
 const { data: summary } = useQuery({
-    queryKey: ["summary"],
+    queryKey: ["summary", props.profileId],
     queryFn: api.getSummary,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
@@ -32,7 +36,7 @@ const { data: summary } = useQuery({
 // staleTime: Infinity means it will never auto-refetch; only invalidated when
 // a new scan completes or the user manually triggers one.
 const { data: diff, isLoading: diffLoading } = useQuery({
-    queryKey: ["diff", "latest"],
+    queryKey: ["diff", "latest", props.profileId],
     queryFn: api.getLatestDiff,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
@@ -45,7 +49,7 @@ const { mutate: triggerScan, isPending: triggerPending } = useMutation({
     onSuccess: () => {
         scanError409.value = false;
         // Make status polling kick in immediately
-        queryClient.invalidateQueries({ queryKey: ["scan", "status"] });
+        queryClient.invalidateQueries({ queryKey: ["scan", "status", props.profileId] });
     },
     onError: (err: unknown) => {
         const status = (err as { response?: { status?: number } })?.response
@@ -59,9 +63,9 @@ watch(
     () => scanStatus.value?.status,
     (newStatus, oldStatus) => {
         if (oldStatus === "running" && newStatus === "idle") {
-            queryClient.invalidateQueries({ queryKey: ["diff", "latest"] });
-            queryClient.invalidateQueries({ queryKey: ["summary"] });
-            queryClient.invalidateQueries({ queryKey: ["history"] });
+            queryClient.invalidateQueries({ queryKey: ["diff", "latest", props.profileId] });
+            queryClient.invalidateQueries({ queryKey: ["summary", props.profileId] });
+            queryClient.invalidateQueries({ queryKey: ["history", props.profileId] });
         }
     },
 );
@@ -202,7 +206,12 @@ function formatDate(iso: string | null | undefined) {
 
         <!-- Follower grid -->
         <div v-else class="grid gap-3">
-            <FollowerCard v-for="follower in tabItems" :key="follower.pk_id" :follower="follower" />
+            <FollowerCard
+                v-for="follower in tabItems"
+                :key="follower.pk_id"
+                :follower="follower"
+                :profile-id="props.profileId"
+            />
         </div>
     </div>
 </template>

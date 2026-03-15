@@ -4,6 +4,7 @@ import type { FollowerRecord } from "../types/follower";
 
 defineProps<{
     follower: FollowerRecord;
+    profileId: string
     /** Use a tighter layout when rendered inside a modal or diff panel */
     compact?: boolean;
 }>();
@@ -16,6 +17,7 @@ defineProps<{
     >
         <ProfilePicture
             :pk-id="follower.pk_id"
+            :profile-id="profileId"
             :alt="follower.username"
             :class="compact ? 'w-9 h-9' : 'w-12 h-12'"
         />

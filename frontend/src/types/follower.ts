@@ -38,3 +38,19 @@ export interface DiffResult {
   new_count: number
   unfollow_count: number
 }
+
+export interface InstagramUserRecord {
+  instagram_user_id: string
+  name: string
+  csrf_token: string
+  session_id: string
+  user_id: string
+  created_at: string
+}
+
+export interface MeResponse {
+  app_user_id: string
+  name: string
+  instagram_users: InstagramUserRecord[]
+  active_instagram_user: InstagramUserRecord | null
+}

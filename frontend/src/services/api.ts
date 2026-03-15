@@ -1,5 +1,12 @@
 import axios from 'axios'
-import type { ScanStatus, ScanSummary, DiffResult, ScanMeta } from '../types/follower'
+import type {
+  ScanStatus,
+  ScanSummary,
+  DiffResult,
+  ScanMeta,
+  MeResponse,
+  InstagramUserRecord,
+} from '../types/follower'
 
 const http = axios.create({
   baseURL: '/api',
@@ -8,18 +15,61 @@ const http = axios.create({
 })
 
 export const getScanStatus = () =>
-  http.get<ScanStatus>('/scan/status').then((r) => r.data)
+  http.get<ScanStatus>('/scan/status', { params: { profile_id: activeInstagramUserId } }).then((r) => r.data)
 
-export const triggerScan = () => http.post('/scan')
+let activeInstagramUserId = ''
+
+export const setActiveInstagramUserForApi = (instagramUserId: string) => {
+  activeInstagramUserId = instagramUserId
+}
+
+export const registerAppUser = (payload: {
+  name: string
+  password: string
+}) => http.post('/auth/register', payload).then((r) => r.data)
+
+export const loginAppUser = (payload: {
+  name: string
+  password: string
+}) => http.post<MeResponse>('/auth/login', payload).then((r) => r.data)
+
+export const logout = () => http.post('/auth/logout').then((r) => r.data)
+
+export const me = () => http.get<MeResponse | null>('/auth/me').then((r) => r.data)
+
+export const createInstagramUser = (payload: {
+  name: string
+  csrf_token: string
+  session_id: string
+  user_id: string
+}) =>
+  http.post<{ instagram_user: InstagramUserRecord; me: MeResponse }>('/auth/instagram-users', payload).then((r) => r.data)
+
+export const listInstagramUsers = () =>
+  http.get<InstagramUserRecord[]>('/auth/instagram-users').then((r) => r.data)
+
+export const getInstagramUser = (instagramUserId: string) =>
+  http.get<InstagramUserRecord>(`/auth/instagram-users/${instagramUserId}`).then((r) => r.data)
+
+export const selectInstagramUser = (instagramUserId: string) =>
+  http.post<{ active_instagram_user: InstagramUserRecord; me: MeResponse }>(`/auth/instagram-users/${instagramUserId}/select`).then((r) => r.data)
+
+export const deleteInstagramUser = (instagramUserId: string) =>
+  http.delete<{ ok: boolean; me: MeResponse }>(`/auth/instagram-users/${instagramUserId}`).then((r) => r.data)
+
+export const deleteAllInstagramUsers = () =>
+  http.delete<{ ok: boolean; me: MeResponse }>('/auth/instagram-users').then((r) => r.data)
+
+export const triggerScan = () => http.post('/scan', null, { params: { profile_id: activeInstagramUserId } })
 
 export const getSummary = () =>
-  http.get<ScanSummary | null>('/summary').then((r) => r.data)
+  http.get<ScanSummary | null>('/summary', { params: { profile_id: activeInstagramUserId } }).then((r) => r.data)
 
 export const getLatestDiff = () =>
-  http.get<DiffResult | null>('/diff/latest').then((r) => r.data)
+  http.get<DiffResult | null>('/diff/latest', { params: { profile_id: activeInstagramUserId } }).then((r) => r.data)
 
 export const getHistory = () =>
-  http.get<ScanMeta[]>('/history').then((r) => r.data)
+  http.get<ScanMeta[]>('/history', { params: { profile_id: activeInstagramUserId } }).then((r) => r.data)
 
 export const getDiff = (diffId: string) =>
-  http.get<DiffResult>(`/diff/${diffId}`).then((r) => r.data)
+  http.get<DiffResult>(`/diff/${diffId}`, { params: { profile_id: activeInstagramUserId } }).then((r) => r.data)

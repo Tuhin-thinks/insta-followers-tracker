@@ -3,6 +3,7 @@ import { ref } from "vue";
 
 const props = defineProps<{
     pkId: string;
+    profileId: string;
     alt: string;
 }>();
 
@@ -15,7 +16,7 @@ const hasError = ref(false);
     >
         <img
             v-if="!hasError"
-            :src="`/api/image/${props.pkId}`"
+            :src="`/api/image/${props.pkId}?profile_id=${props.profileId}`"
             :alt="props.alt"
             class="w-full h-full object-cover"
             loading="lazy"
