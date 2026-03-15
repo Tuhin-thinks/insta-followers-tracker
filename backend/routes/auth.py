@@ -139,9 +139,13 @@ def select_instagram_user(instagram_user_id: str):
         return jsonify({"error": "Instagram user not found"}), 404
 
     instagram_user = auth.get_instagram_user(app_user_id, instagram_user_id)
+    if not instagram_user:
+        return jsonify({"error": "Instagram user not found"}), 404
+
     return jsonify(
         {
             "active_instagram_user": instagram_user,
+            "message": f"Active account set to {instagram_user['name']}",
             "me": auth.build_me_payload(app_user_id, app_user_name),
         }
     )

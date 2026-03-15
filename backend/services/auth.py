@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from backend.config import USERS_DIR, profile_data_dir, user_dir
+from insta_interface import InstagramProfile, get_user_data
 
 
 def _read_json(path: Path, fallback: dict | list) -> dict | list:
@@ -100,6 +101,27 @@ def get_instagram_users(app_user_id: str) -> list[dict]:
     return payload if isinstance(payload, list) else []
 
 
+def _safe_fetch_instagram_username(
+    csrf_token: str, session_id: str, user_id: str
+) -> str | None:
+    """Fetch username from Instagram for friendlier first-time profile naming."""
+    try:
+        profile = InstagramProfile(
+            csrf_token=csrf_token,
+            session_id=session_id,
+            user_id=user_id,
+        )
+        user_data = get_user_data(profile=profile)
+    except Exception:
+        return None
+
+    username = user_data.get("username")
+    if isinstance(username, str):
+        normalized = username.strip()
+        return normalized or None
+    return None
+
+
 def add_instagram_user(
     app_user_id: str,
     name: str,
@@ -112,14 +134,23 @@ def add_instagram_user(
         raise ValueError("csrf_token, session_id and user_id are required")
 
     instagram_users = get_instagram_users(app_user_id)
+    fetched_username = _safe_fetch_instagram_username(
+        csrf_token=csrf_token,
+        session_id=session_id,
+        user_id=user_id,
+    )
+    now_iso = datetime.now().isoformat()
     instagram_user_id = f"ig_{user_id}_{len(instagram_users) + 1}"
     instagram_user = {
         "instagram_user_id": instagram_user_id,
-        "name": name.strip() or f"Instagram {user_id}",
+        "name": name.strip() or fetched_username or f"Instagram {user_id}",
+        "username": fetched_username,
         "csrf_token": csrf_token,
         "session_id": session_id,
         "user_id": user_id,
-        "created_at": datetime.now().isoformat(),
+        "csrf_token_added_at": now_iso,
+        "session_id_added_at": now_iso,
+        "created_at": now_iso,
     }
     instagram_users.append(instagram_user)
     _write_json(_instagram_users_file(app_user_id), instagram_users)
