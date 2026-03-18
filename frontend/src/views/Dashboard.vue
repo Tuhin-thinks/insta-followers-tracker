@@ -118,7 +118,7 @@ function formatDate(iso: string | null | undefined) {
                     {{ formatDate(scanStatus?.last_scan_at) }}
                 </p>
                 <p v-if="summary" class="text-sm text-gray-500 mt-1">
-                    {{ summary.follower_count.toLocaleString() }} followers
+                    {{ (summary.follower_count ?? 0).toLocaleString() }} followers
                     <template v-if="summary.new_count !== undefined">
                         ·
                         <span class="text-emerald-600 font-medium">+{{ summary.new_count }}</span>
