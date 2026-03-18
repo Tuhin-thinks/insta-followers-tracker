@@ -1,5 +1,5 @@
 [project]
-name = "no-follow-insta"
+name = "insta-followers-tracker"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,6 +9,10 @@ dependencies = [
     "dotenv>=0.9.9",
     "flask>=3.0.0",
     "flask-cors>=4.0.0",
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.5",
+    "pymdown-extensions>=10.21",
+    "mkdocs-minify-plugin>=0.8.0",
 ]
 
 [dependency-groups]
@@ -18,4 +22,6 @@ dev = [
     "pylance>=3.0.0",
     "ruff>=0.15.6",
     "debugpy>=1.8.20",
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
 ]

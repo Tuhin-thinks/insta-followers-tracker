@@ -1,0 +1,105 @@
+site_name: insta-followers-tracker
+site_description: Instagram follower tracker web application documentation
+site_author: Your Name
+site_url: https://your-domain.com
+repo_url: https://github.com/tuhin-thinks/insta-followers-tracker
+repo_name: insta-followers-tracker
+edit_uri: edit/main/docs/
+
+theme:
+    name: material
+    palette:
+        - media: "(prefers-color-scheme: light)"
+          scheme: default
+          primary: indigo
+          accent: pink
+          toggle:
+              icon: material/brightness-7
+              name: Switch to dark mode
+        - media: "(prefers-color-scheme: dark)"
+          scheme: slate
+          primary: indigo
+          accent: pink
+          toggle:
+              icon: material/brightness-4
+              name: Switch to light mode
+    features:
+        - navigation.instant
+        - navigation.instant.progress
+        - navigation.tracking
+        - navigation.tabs
+        - navigation.tabs.sticky
+        - navigation.sections
+        - navigation.expand
+        - navigation.prune
+        - toc.follow
+        - toc.integrate
+        - search.suggest
+        - search.highlight
+        - search.share
+        - content.action.edit
+        - content.action.view
+        - content.code.copy
+        - content.code.select
+        - content.tabs.link
+        - content.tooltips
+
+plugins:
+    - search:
+          lang: en
+    - minify:
+          minify_html: true
+          minify_css: true
+          minify_js: true
+
+markdown_extensions:
+    - admonition
+    - attr_list
+    - pymdownx.emoji:
+          emoji_index: !!python/name:material.extensions.emoji.twemoji
+          emoji_generator: !!python/name:material.extensions.emoji.to_svg
+    - pymdownx.highlight:
+          use_pygments: true
+    - pymdownx.inlinehilite
+    - pymdownx.snippets
+    - pymdownx.superfences:
+          custom_fences:
+              - name: mermaid
+                class: mermaid
+                format: !!python/name:pymdownx.superfences.fence_code_format
+    - pymdownx.tabbed:
+          alternate_style: true
+    - pymdownx.tasklist:
+          custom_checkbox: true
+    - tables
+    - toc:
+          permalink: true
+
+nav:
+    - Home: index.md
+    - Getting Started:
+          - Quick Start: setup.md
+          - Architecture: architecture.md
+    - Documentation:
+          - Backend API: backend.md
+          - Frontend: frontend.md
+          - Database: database.md
+    - Development:
+          - Development Workflow: development.md
+          - API Reference: api-reference.md
+    - About:
+          - Contributing: contributing.md
+          - Changelog: changelog.md
+
+extra:
+    social:
+        - icon: fontawesome/brands/github
+          link: https://github.com/tuhin-thinks/insta-followers-tracker
+          name: GitHub
+        - icon: fontawesome/brands/twitter
+          link: https://twitter.com
+          name: Twitter
+    generator: false
+
+copyright: >-
+    Copyright &copy; 2026 insta-followers-tracker
