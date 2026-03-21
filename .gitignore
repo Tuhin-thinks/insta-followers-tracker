@@ -217,4 +217,5 @@ __marimo__/
 data/
 profile_query/
 followers_data*
-test/outputs/*.txt
+tests/outputs/*.txt
+tests/*.env
