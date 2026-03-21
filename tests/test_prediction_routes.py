@@ -73,3 +73,31 @@ def test_prediction_history_returns_persisted_rows(monkeypatch):
             "status": "completed",
         }
     ]
+
+
+def test_prediction_task_status_returns_normalized_error(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "backend.routes.predict.get_active_context",
+        lambda instagram_user_id_override=None: (
+            "app_test_user",
+            {"instagram_user_id": "ig_123"},
+        ),
+    )
+    monkeypatch.setattr(
+        "backend.routes.predict.prediction_runner.get_task_status",
+        lambda task_id: {
+            "task_id": task_id,
+            "prediction_id": "pred_123",
+            "status": "error",
+            "error": "Prediction task became inactive after running for more than 5 minutes.",
+        },
+    )
+
+    response = client.get("/api/prediction-tasks/task_123/status")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "error"

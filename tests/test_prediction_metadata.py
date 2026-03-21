@@ -1,5 +1,7 @@
+from datetime import datetime, timedelta
+
 import insta_interface as ii
-from backend.services import account_handler
+from backend.services import account_handler, prediction_runner
 
 
 def test_extract_user_summary_includes_new_metadata_fields():
@@ -196,3 +198,185 @@ def test_request_followback_prediction_reuses_cached_metadata(monkeypatch):
         result["prediction"]["result_payload"]["target_profile"]["category"] == "Artist"
     )
     assert result["task"] is None
+
+
+def test_request_followback_prediction_reuses_active_task(monkeypatch):
+    monkeypatch.setattr(
+        account_handler,
+        "_cache_ready",
+        lambda app_user_id, reference_profile_id, target_profile_id: False,
+    )
+    monkeypatch.setattr(
+        account_handler,
+        "_build_profile",
+        lambda credentials: object(),
+    )
+    monkeypatch.setattr(
+        account_handler.ii,
+        "resolve_target_user_pk",
+        lambda username, profile: "target_123",
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "get_target_profile",
+        lambda app_user_id, reference_profile_id, target_profile_id: {
+            "username": "target.user"
+        },
+    )
+
+    reused_bundle = {
+        "prediction": {
+            "prediction_id": "pred_existing",
+            "status": "queued",
+            "target_profile_id": "target_123",
+        },
+        "task": {
+            "task_id": "task_existing",
+            "prediction_id": "pred_existing",
+            "status": "queued",
+        },
+    }
+    monkeypatch.setattr(
+        prediction_runner,
+        "get_active_task_bundle",
+        lambda **kwargs: reused_bundle,
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "create_prediction",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("should not create new prediction")
+        ),
+    )
+
+    result = account_handler.request_followback_prediction(
+        app_user_id="app_test_user",
+        instagram_user={
+            "instagram_user_id": "ig_123",
+            "csrf_token": "csrf",
+            "session_id": "session",
+            "user_id": "viewer_1",
+        },
+        username="target.user",
+        refresh=True,
+    )
+
+    assert result == reused_bundle
+
+
+def test_get_active_task_bundle_reuses_queued_task(monkeypatch):
+    queued_task = {
+        "task_id": "task_queued",
+        "prediction_id": "pred_queued",
+        "status": "queued",
+        "queued_at": datetime.now().isoformat(),
+        "started_at": None,
+    }
+    prediction = {
+        "prediction_id": "pred_queued",
+        "status": "queued",
+        "target_profile_id": "target_123",
+    }
+
+    monkeypatch.setattr(
+        prediction_runner.db_service,
+        "get_latest_active_prediction_task",
+        lambda **kwargs: queued_task,
+    )
+    monkeypatch.setattr(
+        prediction_runner.db_service,
+        "get_prediction",
+        lambda prediction_id: prediction,
+    )
+
+    result = prediction_runner.get_active_task_bundle(
+        app_user_id="app_test_user",
+        reference_profile_id="ig_123",
+        target_profile_id="target_123",
+    )
+
+    assert result == {"task": queued_task, "prediction": prediction}
+
+
+def test_get_active_task_bundle_marks_stale_running_task_as_error(monkeypatch):
+    stale_task = {
+        "task_id": "task_stale",
+        "prediction_id": "pred_stale",
+        "status": "running",
+        "queued_at": (datetime.now() - timedelta(minutes=6)).isoformat(),
+        "started_at": (datetime.now() - timedelta(minutes=6)).isoformat(),
+    }
+    errored_task = {
+        **stale_task,
+        "status": "error",
+        "error": "Prediction task became inactive after running for more than 5 minutes.",
+        "completed_at": datetime.now().isoformat(),
+    }
+    updated_predictions: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        prediction_runner.db_service,
+        "get_latest_active_prediction_task",
+        lambda **kwargs: stale_task,
+    )
+    monkeypatch.setattr(
+        prediction_runner,
+        "mark_task_error",
+        lambda task_id, error: errored_task,
+    )
+    monkeypatch.setattr(
+        prediction_runner.db_service,
+        "update_prediction",
+        lambda prediction_id, status=None, **kwargs: updated_predictions.append(
+            (prediction_id, status)
+        ),
+    )
+
+    result = prediction_runner.get_active_task_bundle(
+        app_user_id="app_test_user",
+        reference_profile_id="ig_123",
+        target_profile_id="target_123",
+    )
+
+    assert result is None
+    assert updated_predictions == [("pred_stale", "error")]
+
+
+def test_get_task_status_marks_stale_running_task_as_error(monkeypatch):
+    stale_task = {
+        "task_id": "task_stale",
+        "prediction_id": "pred_stale",
+        "status": "running",
+        "queued_at": (datetime.now() - timedelta(minutes=6)).isoformat(),
+        "started_at": (datetime.now() - timedelta(minutes=6)).isoformat(),
+    }
+    errored_task = {
+        **stale_task,
+        "status": "error",
+        "error": "Prediction task became inactive after running for more than 5 minutes.",
+        "completed_at": datetime.now().isoformat(),
+    }
+    updated_predictions: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        prediction_runner.db_service,
+        "get_prediction_task",
+        lambda task_id: stale_task,
+    )
+    monkeypatch.setattr(
+        prediction_runner,
+        "mark_task_error",
+        lambda task_id, error: errored_task,
+    )
+    monkeypatch.setattr(
+        prediction_runner.db_service,
+        "update_prediction",
+        lambda prediction_id, status=None, **kwargs: updated_predictions.append(
+            (prediction_id, status)
+        ),
+    )
+
+    result = prediction_runner.get_task_status("task_stale")
+
+    assert result == errored_task
+    assert updated_predictions == [("pred_stale", "error")]
